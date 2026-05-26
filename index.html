@@ -1,0 +1,1068 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Calculadora Previdenciária Profissional</title>
+  
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  
+  <!-- Lucide Icons -->
+  <script src="https://unpkg.com/lucide@latest"></script>
+  
+  <!-- React & ReactDOM -->
+  <script crossorigin src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  
+  <!-- Babel Standalone (Para compilar JSX no navegador) -->
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+
+  <style>
+    /* Otimizações para impressão */
+    @media print {
+      body { background: white !important; }
+      .print\:hidden { display: none !important; }
+      .print\:bg-white { background-color: white !important; }
+      .print\:p-0 { padding: 0 !important; }
+      .print\:shadow-none { box-shadow: none !important; }
+      .print\:border-none { border: none !important; }
+      .print\:border-b-2 { border-bottom-width: 2px !important; }
+      .print\:border-slate-300 { border-color: #cbd5e1 !important; }
+      .print\:bg-none { background: none !important; }
+      .print\:text-black { color: black !important; }
+      .print\:pt-4 { padding-top: 1rem !important; }
+      .print\:border-t { border-top-width: 1px !important; }
+    }
+  </style>
+</head>
+<body class="bg-slate-100 font-sans text-slate-800">
+  
+  <!-- Ponto de montagem do React -->
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // Componente auxiliar para renderizar ícones Lucide no React Standalone
+    const Icon = ({ name, className }) => {
+      return <i data-lucide={name} className={className}></i>;
+    };
+
+    function App() {
+      // Estado para Dados do Cliente
+      const [nome, setNome] = useState('');
+      const [dataNascimento, setDataNascimento] = useState('');
+      const [idade, setIdade] = useState(null);
+      const [idadeDecimal, setIdadeDecimal] = useState(0);
+      const [genero, setGenero] = useState('M'); // 'M' ou 'F'
+
+      // Estado para os Vínculos
+      const [vinculos, setVinculos] = useState([]);
+      const [novoVinculo, setNovoVinculo] = useState({
+        empresa: '',
+        profissao: '',
+        inicio: '',
+        fim: ''
+      });
+
+      // Estado para Edição de Vínculo
+      const [editingId, setEditingId] = useState(null);
+      const [editForm, setEditForm] = useState({
+        empresa: '',
+        profissao: '',
+        inicio: '',
+        fim: ''
+      });
+
+      const [notification, setNotification] = useState(null);
+
+      const dataAtual = new Date();
+      const dataAtualFormatada = dataAtual.toLocaleDateString('pt-BR');
+
+      // Atualiza os ícones na tela sempre que a interface renderizar
+      useEffect(() => {
+        lucide.createIcons();
+      });
+
+      const showNotification = (message, type = 'error') => {
+        setNotification({ message, type });
+        setTimeout(() => {
+          setNotification(null);
+        }, 5000);
+      };
+
+      useEffect(() => {
+        if (dataNascimento) {
+          const calcularIdade = () => {
+            const hoje = new Date();
+            const [ano, mes, dia] = dataNascimento.split('-').map(Number);
+            
+            let anos = hoje.getFullYear() - ano;
+            let meses = (hoje.getMonth() + 1) - mes;
+            let dias = hoje.getDate() - dia;
+
+            if (dias < 0) {
+              meses--;
+              const ultimoDiaMesAnterior = new Date(hoje.getFullYear(), hoje.getMonth(), 0).getDate();
+              dias += ultimoDiaMesAnterior;
+            }
+            
+            if (meses < 0) {
+              anos--;
+              meses += 12;
+            }
+
+            setIdade({ anos, meses, dias });
+            const totalIdadeAnos = anos + (meses / 12) + (dias / 360);
+            setIdadeDecimal(totalIdadeAnos);
+          };
+          calcularIdade();
+        } else {
+          setIdade(null);
+          setIdadeDecimal(0);
+        }
+      }, [dataNascimento]);
+
+      const calcularPeriodoBase = (inicio, fim) => {
+        let [a1, m1, d1] = inicio.split('-').map(Number);
+        let [a2, m2, d2] = fim.split('-').map(Number);
+
+        const ultimoDiaMes1 = new Date(a1, m1, 0).getDate();
+        const ultimoDiaMes2 = new Date(a2, m2, 0).getDate();
+
+        if (d1 === 31) d1 = 30;
+        if (d2 === 31) d2 = 30;
+
+        if (m1 === 2 && d1 === ultimoDiaMes1) d1 = 30;
+        if (m2 === 2 && d2 === ultimoDiaMes2) d2 = 30;
+
+        let anos = a2 - a1;
+        let meses = m2 - m1;
+        let dias = d2 - d1 + 1; 
+
+        if (dias <= 0) {
+          meses--;
+          dias += 30; 
+        }
+        if (meses < 0) {
+          anos--;
+          meses += 12;
+        }
+        
+        if (dias >= 30) {
+          meses += Math.floor(dias / 30);
+          dias = dias % 30;
+        }
+        if (meses >= 12) {
+          anos += Math.floor(meses / 12);
+          meses = meses % 12;
+        }
+        return { anos, meses, dias };
+      };
+
+      const calcularTotaisSeparados = () => {
+        let preDias = 0, preMeses = 0, preAnos = 0;
+        let posDias = 0, posMeses = 0, posAnos = 0;
+        let totalDias = 0, totalMeses = 0, totalAnos = 0;
+
+        const LIMITE_EC = '2019-11-13';
+        const INICIO_POS_EC = '2019-11-14';
+
+        vinculos.forEach(v => {
+          const t = calcularPeriodoBase(v.inicio, v.fim);
+          totalDias += t.dias;
+          totalMeses += t.meses;
+          totalAnos += t.anos;
+
+          const inicioDate = v.inicio;
+          const fimDate = v.fim;
+
+          if (fimDate <= LIMITE_EC) {
+            preDias += t.dias;
+            preMeses += t.meses;
+            preAnos += t.anos;
+          } else if (inicioDate >= INICIO_POS_EC) {
+            posDias += t.dias;
+            posMeses += t.meses;
+            posAnos += t.anos;
+          } else {
+            const prePeriodo = calcularPeriodoBase(inicioDate, LIMITE_EC);
+            preDias += prePeriodo.dias;
+            preMeses += prePeriodo.meses;
+            preAnos += prePeriodo.anos;
+
+            const posPeriodo = calcularPeriodoBase(INICIO_POS_EC, fimDate);
+            posDias += posPeriodo.dias;
+            posMeses += posPeriodo.meses;
+            posAnos += posPeriodo.anos;
+          }
+        });
+
+        preMeses += Math.floor(preDias / 30);
+        preDias = preDias % 30;
+        preAnos += Math.floor(preMeses / 12);
+        preMeses = preMeses % 12;
+
+        posMeses += Math.floor(posDias / 30);
+        posDias = posDias % 30;
+        posAnos += Math.floor(posMeses / 12);
+        posMeses = posMeses % 12;
+
+        totalMeses += Math.floor(totalDias / 30);
+        totalDias = totalDias % 30;
+        totalAnos += Math.floor(totalMeses / 12);
+        totalMeses = totalMeses % 12;
+
+        return {
+          pre: { anos: preAnos, meses: preMeses, dias: preDias },
+          pos: { anos: posAnos, meses: posMeses, dias: posDias },
+          total: { anos: totalAnos, meses: totalMeses, dias: totalDias }
+        };
+      };
+
+      const totais = calcularTotaisSeparados();
+      const total = totais.total;
+
+      const formatarDiasParaYMD = (totalDiasComerciais) => {
+        let anos = Math.floor(totalDiasComerciais / 360);
+        let restoDias = totalDiasComerciais % 360;
+        let meses = Math.floor(restoDias / 30);
+        let dias = Math.round(restoDias % 30);
+        return `${anos}a, ${meses}m e ${dias}d`;
+      };
+
+      const projetarDataDER = (diasRestantes) => {
+        if (diasRestantes <= 0) return "Requisitos já atingidos!";
+        const dataAlvo = new Date();
+        dataAlvo.setDate(dataAlvo.getDate() + Math.ceil(diasRestantes));
+        return dataAlvo.toLocaleDateString('pt-BR');
+      };
+
+      const calcularArtigo15Pontos = () => {
+        const tempoDecimal = total.anos + (total.meses / 12) + (total.dias / 360);
+        const pontosAtuais = idadeDecimal + tempoDecimal;
+        const pontosExigidos2026 = genero === 'M' ? 103 : 93;
+        const pontosFaltam = Math.max(0, pontosExigidos2026 - pontosAtuais);
+
+        const tempoMinimoExigido = genero === 'M' ? 35 : 30;
+        const tempoAtendido = tempoDecimal >= tempoMinimoExigido;
+
+        return {
+          pontosAtuais: pontosAtuais.toFixed(2),
+          pontosExigidos2026,
+          pontosFaltam: pontosFaltam.toFixed(2),
+          elegivelTempo: tempoAtendido,
+          tempoMinimoExigido
+        };
+      };
+
+      const progressivaIdadeArtigo16 = [
+        { ano: 2019, M: 61.0, F: 56.0 },
+        { ano: 2020, M: 61.5, F: 56.5 },
+        { ano: 2021, M: 62.0, F: 57.0 },
+        { ano: 2022, M: 62.5, F: 57.5 },
+        { ano: 2023, M: 63.0, F: 58.0 },
+        { ano: 2024, M: 63.5, F: 58.5 },
+        { ano: 2025, M: 64.0, F: 59.0 },
+        { ano: 2026, M: 64.5, F: 59.5 },
+        { ano: 2027, M: 65.0, F: 60.0 },
+        { ano: 2028, M: 65.0, F: 60.5 },
+        { ano: 2029, M: 65.0, F: 61.0 },
+        { ano: 2030, M: 65.0, F: 61.5 },
+        { ano: 2031, M: 65.0, F: 62.0 }
+      ];
+
+      const calcularPedagio50 = () => {
+        const tempoNecessarioECDias = (genero === 'M' ? 33 : 28) * 360;
+        const preECDias = totais.pre.anos * 360 + totais.pre.meses * 30 + totais.pre.dias;
+        
+        if (preECDias < tempoNecessarioECDias) {
+          return { 
+            elegivel: false, 
+            motivo: `O cliente tinha ${totais.pre.anos}a, ${totais.pre.meses}m e ${totais.pre.dias}d de tempo até 13/11/2019. Exigia-se no mínimo ${genero === 'M' ? '33' : '28'} anos.`
+          };
+        }
+
+        const objetivoDias = (genero === 'M' ? 35 : 30) * 360;
+        const faltavaECDias = objetivoDias - preECDias;
+        const pedagioDias = Math.ceil(faltavaECDias * 0.5);
+        
+        const totalExigidoDias = objetivoDias + pedagioDias;
+        const tempoGeralAtualDias = total.anos * 360 + total.meses * 30 + total.dias;
+        
+        const faltaHojeDias = totalExigidoDias - tempoGeralAtualDias;
+        
+        let der = "Requisitos já atingidos!";
+        let faltaHojeText = "0 dias";
+        
+        if (faltaHojeDias > 0) {
+          der = projetarDataDER(faltaHojeDias);
+          faltaHojeText = formatarDiasParaYMD(faltaHojeDias);
+        }
+        
+        return {
+          elegivel: true,
+          tempoExigidoFormatado: formatarDiasParaYMD(totalExigidoDias),
+          faltaHojeText,
+          der
+        };
+      };
+
+      const calcularPedagio100 = () => {
+        const objetivoDias = (genero === 'M' ? 35 : 30) * 360;
+        const preECDias = totais.pre.anos * 360 + totais.pre.meses * 30 + totais.pre.dias;
+        
+        const faltavaECDias = Math.max(0, objetivoDias - preECDias);
+        const pedagioDias = faltavaECDias * 1.0; 
+        
+        const totalExigidoDias = objetivoDias + pedagioDias;
+        const tempoGeralAtualDias = total.anos * 360 + total.meses * 30 + total.dias;
+        
+        const faltaHojeDias = totalExigidoDias - tempoGeralAtualDias;
+        
+        let derTempo = "Tempo Atingido!";
+        let faltaHojeText = "0 dias";
+        
+        if (faltaHojeDias > 0) {
+          derTempo = projetarDataDER(faltaHojeDias);
+          faltaHojeText = formatarDiasParaYMD(faltaHojeDias);
+        }
+
+        const idadeExigida = genero === 'M' ? 60 : 57;
+        let derIdade = "Idade Atingida!";
+        if (dataNascimento) {
+           const [anoN, mesN, diaN] = dataNascimento.split('-').map(Number);
+           const dataAtingeIdade = new Date(anoN + idadeExigida, mesN - 1, diaN);
+           const hoje = new Date();
+           if (dataAtingeIdade > hoje) {
+               derIdade = dataAtingeIdade.toLocaleDateString('pt-BR');
+           }
+        }
+        
+        return {
+          idadeExigida,
+          tempoExigidoFormatado: formatarDiasParaYMD(totalExigidoDias),
+          faltaHojeText,
+          derTempo,
+          derIdade
+        };
+      };
+
+      const calcularArtigo18 = () => {
+        const idadeExigida = genero === 'M' ? 65 : 62;
+        if (!dataNascimento) return { atingida: false, data: '--/--/----' };
+
+        const [anoN, mesN, diaN] = dataNascimento.split('-').map(Number);
+        const dataNiverAposentadoria = new Date(anoN + idadeExigida, mesN - 1, diaN);
+        
+        const hoje = new Date();
+        const atingida = hoje >= dataNiverAposentadoria;
+
+        return {
+          atingida,
+          data: dataNiverAposentadoria.toLocaleDateString('pt-BR'),
+          idadeExigida
+        };
+      };
+
+      const adicionarVinculo = (e) => {
+        e.preventDefault();
+        if (!novoVinculo.empresa || !novoVinculo.inicio || !novoVinculo.fim) {
+          showNotification("Preencha obrigatoriamente a Empresa, Início e Fim.", "warning");
+          return;
+        }
+        if (novoVinculo.fim < novoVinculo.inicio) {
+          showNotification("A Data Final não pode ser menor que a Data Inicial.", "error");
+          return;
+        }
+
+        const tempo = calcularPeriodoBase(novoVinculo.inicio, novoVinculo.fim);
+        setVinculos([...vinculos, { ...novoVinculo, tempo, id: Date.now() }]);
+        setNovoVinculo({ empresa: '', profissao: '', inicio: '', fim: '' });
+        showNotification("Vínculo inserido com sucesso!", "success");
+      };
+
+      const removerVinculo = (id) => {
+        setVinculos(vinculos.filter(v => v.id !== id));
+        showNotification("Vínculo removido.", "info");
+      };
+
+      const iniciarEdicao = (v) => {
+        setEditingId(v.id);
+        setEditForm({
+          empresa: v.empresa,
+          profissao: v.profissao,
+          inicio: v.inicio,
+          fim: v.fim
+        });
+      };
+
+      const salvarEdicao = (id) => {
+        if (!editForm.empresa || !editForm.inicio || !editForm.fim) {
+          showNotification("Por favor, preencha todos os campos obrigatórios na linha.", "warning");
+          return;
+        }
+        if (editForm.fim < editForm.inicio) {
+          showNotification("A Data Final editada não pode ser menor que a Data Inicial.", "error");
+          return;
+        }
+
+        const tempo = calcularPeriodoBase(editForm.inicio, editForm.fim);
+        setVinculos(vinculos.map(v => v.id === id ? { ...v, ...editForm, tempo } : v));
+        setEditingId(null);
+        showNotification("Linha de vínculo atualizada!", "success");
+      };
+
+      const formatarData = (dataStr) => {
+        if (!dataStr) return '';
+        const [a, m, d] = dataStr.split('-');
+        return `${d}/${m}/${a}`;
+      };
+
+      const ordenarVinculos = () => {
+        const ordenados = [...vinculos].sort((a, b) => new Date(a.inicio) - new Date(b.inicio));
+        setVinculos(ordenados);
+        showNotification("Tabela organizada cronologicamente.", "success");
+      };
+
+      const exportarDados = () => {
+        const payload = { nome, dataNascimento, genero, vinculos };
+        const dataStr = "data:text/json;charset=utf-8," + encodeURIComponent(JSON.stringify(payload, null, 2));
+        const downloadAnchor = document.createElement('a');
+        downloadAnchor.setAttribute("href", dataStr);
+        downloadAnchor.setAttribute("download", `estudo_previdenciario_${nome.replace(/\s+/g, '_') || 'cliente'}.json`);
+        document.body.appendChild(downloadAnchor);
+        downloadAnchor.click();
+        downloadAnchor.remove();
+        showNotification("Configuração exportada com sucesso!", "success");
+      };
+
+      const importarDados = (e) => {
+        const fileReader = new FileReader();
+        if (e.target.files && e.target.files[0]) {
+          fileReader.readAsText(e.target.files[0], "UTF-8");
+          fileReader.onload = (event) => {
+            try {
+              const parsed = JSON.parse(event.target.result);
+              if (parsed.nome !== undefined) setNome(parsed.nome);
+              if (parsed.dataNascimento !== undefined) setDataNascimento(parsed.dataNascimento);
+              if (parsed.genero !== undefined) setGenero(parsed.genero);
+              if (parsed.vinculos !== undefined) setVinculos(parsed.vinculos);
+              showNotification("Seu arquivo de simulação foi importado!", "success");
+            } catch (error) {
+              showNotification("Houve um problema na leitura desse arquivo.", "error");
+            }
+          };
+        }
+      };
+
+      const limparTudo = () => {
+        if (window.confirm("Deseja deletar todas as entradas atuais?")) {
+          setNome('');
+          setDataNascimento('');
+          setVinculos([]);
+          setNovoVinculo({ empresa: '', profissao: '', inicio: '', fim: '' });
+          showNotification("Dados zerados.", "info");
+        }
+      };
+
+      return (
+        <div className="min-h-screen py-8 px-4 sm:px-6 lg:px-8">
+          <div className="max-w-6xl mx-auto space-y-6">
+            
+            {notification && (
+              <div className={`fixed top-4 right-4 z-50 flex items-center gap-2.5 p-4 rounded-xl shadow-xl border text-sm font-semibold transition-all max-w-sm ${
+                notification.type === 'success' ? 'bg-emerald-50 border-emerald-200 text-emerald-800' :
+                notification.type === 'error' ? 'bg-rose-50 border-rose-200 text-rose-800' :
+                notification.type === 'warning' ? 'bg-amber-50 border-amber-200 text-amber-800' :
+                'bg-sky-50 border-sky-200 text-sky-800'
+              }`}>
+                <Icon name="alert-circle" className="w-5 h-5 flex-shrink-0" />
+                <span>{notification.message}</span>
+                <button onClick={() => setNotification(null)} className="ml-auto hover:opacity-75">
+                  <Icon name="x" className="w-4 h-4" />
+                </button>
+              </div>
+            )}
+
+            <div className="bg-gradient-to-r from-slate-900 via-blue-950 to-slate-900 text-white p-6 sm:p-8 rounded-2xl shadow-lg flex flex-col md:flex-row justify-between items-start md:items-center gap-4 print:bg-none print:text-black print:p-2 print:shadow-none print:border-b-2 print:border-slate-300">
+              <div className="flex items-center gap-4">
+                <div className="bg-white/10 p-3 rounded-xl print:hidden">
+                  <Icon name="calculator" className="w-8 h-8 text-blue-300" />
+                </div>
+                <div>
+                  <h1 className="text-2xl sm:text-3xl font-black tracking-tight">Cálculo de Planejamento Previdenciário</h1>
+                  <p className="text-blue-200/70 text-xs sm:text-sm mt-1">Cálculo exato comercial, análise de EC 103/2019 e projeções de DER</p>
+                </div>
+              </div>
+              <div className="flex gap-2 w-full md:w-auto print:hidden">
+                <button 
+                  onClick={exportarDados}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg transition-all"
+                >
+                  <Icon name="download" className="w-3.5 h-3.5" /> Exportar JSON
+                </button>
+                <label className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-white/10 hover:bg-white/20 text-white text-xs font-bold rounded-lg cursor-pointer transition-all">
+                  <Icon name="upload" className="w-3.5 h-3.5" /> Importar
+                  <input type="file" accept=".json" onChange={importarDados} className="hidden" />
+                </label>
+                <button 
+                  onClick={limparTudo}
+                  className="flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-2 bg-rose-600/20 hover:bg-rose-600/40 text-rose-100 text-xs font-bold rounded-lg transition-all"
+                >
+                  <Icon name="refresh-cw" className="w-3.5 h-3.5" /> Resetar
+                </button>
+              </div>
+            </div>
+
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:border-none print:shadow-none">
+              <h2 className="text-base font-extrabold uppercase tracking-wider flex items-center gap-2 mb-4 text-blue-950 border-b border-slate-100 pb-2">
+                <Icon name="user" className="w-5 h-5 text-blue-600" /> Identificação do Segurado
+              </h2>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-6 items-start">
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Gênero Previdenciário</label>
+                  <div className="flex gap-2">
+                    <button
+                      type="button"
+                      onClick={() => setGenero('M')}
+                      className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all ${genero === 'M' ? 'bg-indigo-50 border-indigo-300 text-indigo-700' : 'bg-white border-slate-200 text-slate-600'}`}
+                    >
+                      Masculino (M)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setGenero('F')}
+                      className={`flex-1 py-2.5 rounded-xl border text-sm font-semibold transition-all ${genero === 'F' ? 'bg-rose-50 border-rose-300 text-rose-700' : 'bg-white border-slate-200 text-slate-600'}`}
+                    >
+                      Feminino (F)
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome do Segurado (Opcional)</label>
+                  <input 
+                    type="text" 
+                    value={nome}
+                    onChange={(e) => setNome(e.target.value)}
+                    placeholder=""
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none uppercase text-sm font-semibold transition-all"
+                  />
+                </div>
+                <div>
+                  <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data de Nascimento</label>
+                  <input 
+                    type="date" 
+                    value={dataNascimento}
+                    onChange={(e) => setDataNascimento(e.target.value)}
+                    className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-blue-600 focus:outline-none text-sm font-semibold transition-all font-mono"
+                  />
+                </div>
+              </div>
+              
+              {idade && (
+                <div className="mt-5 bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 p-4 rounded-xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 animate-fade-in">
+                  <div className="flex items-center gap-3">
+                    <div className="bg-blue-600 text-white p-2 rounded-lg shadow-sm">
+                      <Icon name="calendar" className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="block text-xs font-bold text-slate-500 uppercase tracking-wider">Idade Completa Hoje</span>
+                      <span className="text-lg sm:text-xl font-black text-blue-900 font-mono">
+                        {idade.anos} anos, {idade.meses} meses e {idade.dias} dias
+                      </span>
+                    </div>
+                  </div>
+                  <div className="text-xs font-semibold text-slate-500 bg-white border border-slate-200/80 px-3 py-1.5 rounded-lg">
+                    Hoje é dia {dataAtualFormatada}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 print:hidden">
+              <h2 className="text-base font-extrabold uppercase tracking-wider flex items-center gap-2 mb-4 text-emerald-900 border-b border-slate-100 pb-2">
+                <Icon name="briefcase" className="w-5 h-5 text-emerald-600" /> Lançamento de Vínculo de Trabalho
+              </h2>
+              <form onSubmit={adicionarVinculo} className="space-y-4">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Nome do Empregador / Empresa</label>
+                    <input 
+                      type="text" 
+                      required
+                      value={novoVinculo.empresa}
+                      onChange={(e) => setNovoVinculo({...novoVinculo, empresa: e.target.value.toUpperCase()})}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none uppercase text-sm font-semibold transition-all"
+                      placeholder="EX: COMPANHIA METALURGICA LTDA"
+                    />
+                  </div>
+                  <div className="md:col-span-2">
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cargo ou Atividade Executada</label>
+                    <input 
+                      type="text" 
+                      value={novoVinculo.profissao}
+                      onChange={(e) => setNovoVinculo({...novoVinculo, profissao: e.target.value.toUpperCase()})}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none uppercase text-sm font-semibold transition-all"
+                      placeholder="EX: OPERADOR DE CALDEIRA"
+                    />
+                  </div>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 items-end">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data de Admissão (Início)</label>
+                    <input 
+                      type="date" 
+                      required
+                      value={novoVinculo.inicio}
+                      onChange={(e) => setNovoVinculo({...novoVinculo, inicio: e.target.value})}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm font-semibold transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <label className="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Data de Rescisão (Fim)</label>
+                    <input 
+                      type="date" 
+                      required
+                      value={novoVinculo.fim}
+                      onChange={(e) => setNovoVinculo({...novoVinculo, fim: e.target.value})}
+                      className="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-500 focus:outline-none text-sm font-semibold transition-all font-mono"
+                    />
+                  </div>
+                  <div>
+                    <button 
+                      type="submit"
+                      className="w-full bg-emerald-600 hover:bg-emerald-700 text-white font-bold py-2.5 px-4 rounded-xl shadow-md flex items-center justify-center gap-2 transition-all cursor-pointer"
+                    >
+                      <Icon name="plus" className="w-5 h-5" /> Inserir Período Comercial
+                    </button>
+                  </div>
+                </div>
+              </form>
+            </div>
+
+            {vinculos.length > 0 ? (
+              <div className="bg-white rounded-2xl shadow-sm border border-slate-200 overflow-hidden">
+                
+                <div className="p-4 bg-slate-50 border-b border-slate-200 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 print:hidden">
+                  <h3 className="font-bold text-slate-700">Histórico de Períodos Contratuais ({vinculos.length})</h3>
+                  <div className="flex gap-2 w-full sm:w-auto">
+                    <button 
+                      onClick={ordenarVinculos}
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-1.5 bg-white border border-slate-250 hover:bg-slate-50 text-slate-700 rounded-lg text-xs font-bold transition"
+                    >
+                      <Icon name="arrow-up-down" className="w-3.5 h-3.5" /> Reordenar por Data
+                    </button>
+                    <button 
+                      onClick={() => window.print()}
+                      className="flex-1 sm:flex-initial flex items-center justify-center gap-1 px-3 py-1.5 bg-blue-50 border border-blue-200 hover:bg-blue-100 text-blue-800 rounded-lg text-xs font-bold transition"
+                    >
+                      <Icon name="file-text" className="w-3.5 h-3.5" /> Gerar Relatório PDF
+                    </button>
+                  </div>
+                </div>
+
+                <div className="overflow-x-auto">
+                  <table className="w-full text-sm text-left">
+                    <thead className="text-xs text-slate-500 uppercase bg-slate-50 border-b border-slate-250">
+                      <tr>
+                        <th className="px-4 py-3 w-10 text-center font-bold">Seq</th>
+                        <th className="px-4 py-3 font-bold">Empregador / Empresa</th>
+                        <th className="px-4 py-3 font-bold">Cargo</th>
+                        <th className="px-4 py-3 font-bold">Admissão</th>
+                        <th className="px-4 py-3 font-bold">Rescisão</th>
+                        <th className="px-4 py-3 text-center font-bold border-l border-slate-200 bg-blue-50/20">Anos</th>
+                        <th className="px-4 py-3 text-center font-bold bg-blue-50/20">Meses</th>
+                        <th className="px-4 py-3 text-center font-bold bg-blue-50/20">Dias</th>
+                        <th className="px-4 py-3 text-center font-bold print:hidden">Ações</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {vinculos.map((v, index) => {
+                        const isEditing = editingId === v.id;
+                        return (
+                          <tr key={v.id} className={`border-b border-slate-100 hover:bg-slate-50/50 transition-colors ${isEditing ? 'bg-amber-50/55' : ''}`}>
+                            <td className="px-4 py-3.5 text-center font-mono font-bold text-slate-400">{index + 1}</td>
+                            
+                            <td className="px-4 py-3.5 font-bold text-slate-900">
+                              {isEditing ? (
+                                <input 
+                                  type="text" 
+                                  value={editForm.empresa} 
+                                  onChange={(e) => setEditForm({ ...editForm, empresa: e.target.value.toUpperCase() })}
+                                  className="w-full px-2 py-1 text-sm border border-amber-300 rounded focus:outline-none uppercase bg-white"
+                                />
+                              ) : (
+                                v.empresa
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3.5 text-slate-600 font-semibold">
+                              {isEditing ? (
+                                <input 
+                                  type="text" 
+                                  value={editForm.profissao} 
+                                  onChange={(e) => setEditForm({ ...editForm, profissao: e.target.value.toUpperCase() })}
+                                  className="w-full px-2 py-1 text-sm border border-amber-300 rounded focus:outline-none uppercase bg-white"
+                                />
+                              ) : (
+                                v.profissao || <span className="text-slate-300 font-normal italic">-</span>
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap font-mono">
+                              {isEditing ? (
+                                <input 
+                                  type="date" 
+                                  value={editForm.inicio} 
+                                  onChange={(e) => setEditForm({ ...editForm, inicio: e.target.value })}
+                                  className="px-1 py-1 text-sm border border-amber-300 rounded focus:outline-none bg-white font-mono"
+                                />
+                              ) : (
+                                formatarData(v.inicio)
+                              )}
+                            </td>
+
+                            <td className="px-4 py-3.5 whitespace-nowrap font-mono">
+                              {isEditing ? (
+                                <input 
+                                  type="date" 
+                                  value={editForm.fim} 
+                                  onChange={(e) => setEditForm({ ...editForm, fim: e.target.value })}
+                                  className="px-1 py-1 text-sm border border-amber-300 rounded focus:outline-none bg-white font-mono"
+                                />
+                              ) : (
+                                formatarData(v.fim)
+                              )}
+                            </td>
+                            
+                            <td className="px-4 py-3.5 text-center border-l border-slate-100 font-mono font-bold text-slate-800 bg-blue-50/10">
+                              {isEditing ? '...' : v.tempo.anos}
+                            </td>
+                            <td className="px-4 py-3.5 text-center font-mono font-bold text-slate-800 bg-blue-50/10">
+                              {isEditing ? '...' : v.tempo.meses}
+                            </td>
+                            <td className="px-4 py-3.5 text-center font-mono font-bold text-slate-800 bg-blue-50/10">
+                              {isEditing ? '...' : v.tempo.dias}
+                            </td>
+                            
+                            <td className="px-4 py-3.5 text-center print:hidden">
+                              {isEditing ? (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button 
+                                    onClick={() => salvarEdicao(v.id)}
+                                    className="p-1 text-emerald-600 hover:bg-emerald-50 rounded"
+                                    title="Salvar Alterações"
+                                  >
+                                    <Icon name="check" className="w-4.5 h-4.5" />
+                                  </button>
+                                  <button 
+                                    onClick={() => setEditingId(null)}
+                                    className="p-1 text-slate-400 hover:bg-slate-100 rounded"
+                                    title="Cancelar Edição"
+                                  >
+                                    <Icon name="x" className="w-4.5 h-4.5" />
+                                  </button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center justify-center gap-1">
+                                  <button 
+                                    onClick={() => iniciarEdicao(v)}
+                                    className="p-1 text-blue-500 hover:bg-blue-50 rounded transition"
+                                    title="Editar Período"
+                                  >
+                                    <Icon name="edit-2" className="w-4 h-4" />
+                                  </button>
+                                  <button 
+                                    onClick={() => removerVinculo(v.id)}
+                                    className="p-1 text-rose-500 hover:bg-rose-50 rounded transition"
+                                    title="Remover Período"
+                                  >
+                                    <Icon name="trash-2" className="w-4 h-4" />
+                                  </button>
+                                </div>
+                              )}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+                
+                <div className="bg-slate-50 border-t border-slate-200 p-6 grid grid-cols-1 md:grid-cols-3 gap-6">
+                  
+                  <div className="bg-white p-4 rounded-xl border border-slate-200">
+                    <span className="block text-xs font-bold text-amber-600 uppercase tracking-wider mb-1">Total Pré-Reforma (até 13/11/2019)</span>
+                    <span className="text-xl font-black text-slate-800 font-mono">
+                      {totais.pre.anos}a, {totais.pre.meses}m, {totais.pre.dias}d
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-1">Tempo acumulado até a data da Emenda Constitucional</p>
+                  </div>
+
+                  <div className="bg-white p-4 rounded-xl border border-slate-200">
+                    <span className="block text-xs font-bold text-indigo-500 uppercase tracking-wider mb-1">Total Pós-Reforma (desde 14/11/2019)</span>
+                    <span className="text-xl font-black text-slate-800 font-mono">
+                      {totais.pos.anos}a, {totais.pos.meses}m, {totais.pos.dias}d
+                    </span>
+                    <p className="text-[10px] text-slate-400 mt-1">Tempo acumulado sob as novas regras de contribuição</p>
+                  </div>
+
+                  <div className="bg-gradient-to-br from-blue-600 to-indigo-700 p-4 rounded-xl text-white shadow-sm">
+                    <span className="block text-xs font-bold text-blue-200 uppercase tracking-wider mb-1">Tempo Total de Contribuição</span>
+                    <span className="text-2xl font-black font-mono">
+                      {total.anos}a, {total.meses}m, {total.dias}d
+                    </span>
+                    <p className="text-[10px] text-blue-200/80 mt-1">Soma geral de todos os vínculos apurados comercialmente</p>
+                  </div>
+
+                </div>
+              </div>
+            ) : (
+              <div className="bg-slate-50 rounded-2xl p-8 text-center border-2 border-dashed border-slate-200 print:hidden animate-pulse">
+                <Icon name="briefcase" className="w-12 h-12 text-slate-400 mx-auto mb-3" />
+                <h3 className="font-bold text-slate-700 mb-1">Nenhum período de trabalho cadastrado</h3>
+                <p className="text-slate-400 text-sm max-w-sm mx-auto">Insira dados de vínculos de trabalho acima para processar o tempo de contribuição do segurado.</p>
+              </div>
+            )}
+
+            {}
+            <div className="bg-white p-6 rounded-2xl shadow-sm border border-slate-200">
+              <h2 className="text-base font-extrabold uppercase tracking-wider flex items-center gap-2 mb-4 text-blue-950 border-b border-slate-100 pb-2">
+                <Icon name="award" className="w-5 h-5 text-blue-600" /> Painel de Enquadramento Constitucional
+              </h2>
+              <p className="text-xs text-slate-500 mb-6 leading-relaxed">
+                As projeções abaixo são dinâmicas, calculadas com base nos dados do segurado. O tempo restante e as datas de DER representam estimativas baseadas na continuidade de contribuições mensais ininterruptas a partir de hoje.
+              </p>
+
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-6">
+
+                {/* Artigo 15 - Regra de Pontos */}
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 md:col-span-2">
+                  <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-2 border-b border-slate-200 pb-3 mb-4">
+                    <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base">
+                      <span className="bg-indigo-600 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">15</span>
+                      Artigo 15 - Regra de Pontos (Idade + Tempo)
+                    </h3>
+                    <span className="text-xs font-bold text-indigo-700 bg-indigo-50 border border-indigo-150 px-2 py-1 rounded">Requisito 2026</span>
+                  </div>
+                  
+                  {(() => {
+                    const pt = calcularArtigo15Pontos();
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-4 gap-4">
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 text-center">
+                          <span className="block text-xs font-bold text-slate-500 uppercase">Sua Pontuação</span>
+                          <span className="text-xl font-black text-indigo-950 font-mono block mt-1">{pt.pontosAtuais} pts</span>
+                          <span className="text-[10px] text-slate-400 font-mono mt-1 block">Idade Decimal + Contribuição</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 text-center">
+                          <span className="block text-xs font-bold text-slate-500 uppercase">Meta {genero === 'M' ? 'Homem' : 'Mulher'} (2026)</span>
+                          <span className="text-xl font-black text-slate-700 font-mono block mt-1">{pt.pontosExigidos2026} pts</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-lg border border-slate-200 text-center">
+                          <span className="block text-xs font-bold text-slate-500 uppercase">Pontos Faltantes</span>
+                          <span className="text-xl font-black text-rose-600 font-mono block mt-1">
+                            {pt.pontosFaltam > 0 ? `${pt.pontosFaltam} pts` : "Atingido!"}
+                          </span>
+                        </div>
+                        <div className={`p-3 rounded-lg text-center flex flex-col justify-center items-center border ${
+                          parseFloat(pt.pontosFaltam) === 0 && pt.elegivelTempo 
+                            ? 'bg-emerald-50 border-emerald-200 text-emerald-800' 
+                            : 'bg-amber-50 border-amber-200 text-amber-800'
+                        }`}>
+                          <span className="text-xs font-bold uppercase block">Status da Regra</span>
+                          <span className="text-sm font-black block mt-1">
+                            {parseFloat(pt.pontosFaltam) === 0 && pt.elegivelTempo 
+                              ? "Requisitos Atingidos!" 
+                              : pt.elegivelTempo 
+                                ? `Falta cumprir pontos` 
+                                : `Falta tempo mínimo (${pt.tempoMinimoExigido} anos)`}
+                          </span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Artigo 17 - Pedágio 50% */}
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 md:col-span-2">
+                  <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-3 border-b pb-2">
+                    <Icon name="briefcase" className="w-5 h-5 text-amber-500" />
+                    Art. 17 - Regra do Pedágio de 50%
+                  </h3>
+                  <p className="text-sm text-slate-600 mb-4">
+                    Apenas para quem estava a menos de 2 anos de se aposentar na data da EC (13/11/2019). O pedágio é de 50% sobre o tempo que faltava.
+                  </p>
+                  {(() => {
+                    const ped = calcularPedagio50();
+                    if (!ped.elegivel) {
+                      return (
+                        <div className="bg-rose-50 p-4 rounded-xl border border-rose-200 text-rose-800 text-sm">
+                          <span className="font-bold text-rose-900 block mb-1">Não elegível:</span>
+                          {ped.motivo}
+                        </div>
+                      );
+                    }
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-center">
+                          <div className="text-xs text-slate-700 uppercase font-bold">Total Exigido</div>
+                          <div className="text-xl sm:text-2xl font-black text-slate-600 mt-1 font-mono">{ped.tempoExigidoFormatado}</div>
+                        </div>
+                        <div className="bg-amber-50 p-3 rounded-lg border border-amber-100 text-center">
+                          <div className="text-xs text-amber-800 uppercase font-bold">Falta Cumprir Hoje</div>
+                          <div className="text-xl sm:text-2xl font-black text-amber-700 mt-1 font-mono">{ped.faltaHojeText}</div>
+                        </div>
+                        <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200 text-center md:col-span-2">
+                          <div className="text-xs text-indigo-900 uppercase font-bold">Data Projetada (DER)</div>
+                          <div className="text-2xl font-black text-indigo-700 mt-1 font-mono">{ped.der}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Artigo 20 - Pedágio 100% */}
+                <div className="bg-white p-5 rounded-2xl shadow-sm border border-slate-200 md:col-span-2">
+                  <h3 className="font-bold text-slate-700 flex items-center gap-2 mb-3 border-b pb-2">
+                    <Icon name="briefcase" className="w-5 h-5 text-teal-500" />
+                    Art. 20 - Regra do Pedágio de 100%
+                  </h3>
+                  <p className="text-sm text-slate-600 mb-4">
+                    Exige idade mínima de <strong>{genero === 'M' ? '60' : '57'} anos</strong>. O pedágio é de 100% sobre o tempo que faltava para atingir 35/30 anos na data da EC (13/11/2019). O requerimento só poderá ser feito quando a DER por idade e a DER por tempo estiverem cumpridas.
+                  </p>
+                  
+                  {(() => {
+                    const ped100 = calcularPedagio100();
+                    return (
+                      <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                        <div className="bg-slate-50 p-3 rounded-lg border border-slate-200 text-center">
+                          <div className="text-xs text-slate-700 uppercase font-bold">Falta Hoje (Tempo)</div>
+                          <div className="text-xl font-black text-slate-600 mt-1 font-mono">{ped100.faltaHojeText}</div>
+                        </div>
+                        <div className="bg-teal-50 p-3 rounded-lg border border-teal-100 text-center">
+                          <div className="text-xs text-teal-800 uppercase font-bold">DER pelo Tempo</div>
+                          <div className="text-xl font-black text-teal-700 mt-1 font-mono">{ped100.derTempo}</div>
+                        </div>
+                        <div className="bg-rose-50 p-3 rounded-lg border border-rose-100 text-center">
+                          <div className="text-xs text-rose-800 uppercase font-bold">DER pela Idade ({ped100.idadeExigida}a)</div>
+                          <div className="text-xl font-black text-rose-700 mt-1 font-mono">{ped100.derIdade}</div>
+                        </div>
+                        <div className="bg-indigo-50 p-3 rounded-lg border border-indigo-200 text-center">
+                          <div className="text-xs text-indigo-900 uppercase font-bold">Total Exigido Final</div>
+                          <div className="text-xl font-black text-indigo-700 mt-1 font-mono">{ped100.tempoExigidoFormatado}</div>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+                {/* Artigo 16 - Idade Mínima Progressiva */}
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 md:col-span-2">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base border-b border-slate-200 pb-3 mb-4">
+                    <span className="bg-blue-600 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">16</span>
+                    Artigo 16 - Regra de Idade Mínima Progressiva
+                  </h3>
+                  
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-start">
+                    <div className="lg:col-span-2 overflow-x-auto">
+                      <table className="w-full text-xs text-left bg-white rounded-xl border border-slate-200 overflow-hidden">
+                        <thead className="bg-slate-100 text-slate-600 uppercase text-[10px] font-bold">
+                          <tr>
+                            <th className="px-3 py-2 text-center">Ano de Vigência</th>
+                            <th className="px-3 py-2 text-center">Idade Exigida (Mulher)</th>
+                            <th className="px-3 py-2 text-center">Idade Exigida (Homem)</th>
+                            <th className="px-3 py-2 text-center">Status no Ano</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100 font-mono">
+                          {progressivaIdadeArtigo16.map((prog) => {
+                            const idadeNecessaria = genero === 'F' ? prog.F : prog.M;
+                            const atendeIdadeHoje = idade && (idade.anos + (idade.meses / 12)) >= idadeNecessaria;
+                            const isCurrentYear = prog.ano === 2026;
+                            
+                            return (
+                              <tr key={prog.ano} className={`hover:bg-slate-50/50 ${isCurrentYear ? 'bg-blue-50/50 font-bold' : ''}`}>
+                                <td className="px-3 py-2 text-center text-slate-700">{prog.ano} {isCurrentYear && "⭐"}</td>
+                                <td className="px-3 py-2 text-center text-slate-600">{prog.F} anos (56a 6m)</td>
+                                <td className="px-3 py-2 text-center text-slate-600">{prog.M} anos (61a 6m)</td>
+                                <td className="px-3 py-2 text-center">
+                                  {atendeIdadeHoje ? (
+                                    <span className="text-[10px] bg-emerald-50 text-emerald-700 border border-emerald-200 px-1.5 py-0.5 rounded font-bold font-sans">Apto</span>
+                                  ) : (
+                                    <span className="text-[10px] bg-slate-100 text-slate-400 px-1.5 py-0.5 rounded font-sans">Falta idade</span>
+                                  )}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+
+                    <div className="bg-white p-4 rounded-xl border border-slate-200 flex flex-col justify-between h-full space-y-4">
+                      <div>
+                        <span className="block text-xs font-bold text-slate-400 uppercase tracking-wider">Idade Atual do Cliente</span>
+                        <span className="text-xl font-black text-slate-800 font-mono block mt-1">
+                          {idade ? `${idade.anos}a ${idade.meses}m ${idade.dias}d` : '--/--'}
+                        </span>
+                        <p className="text-[10px] text-slate-400 mt-2 leading-relaxed">
+                          A idade do segurado aumenta progressivamente. Compare a idade atual com os valores exigidos na tabela ao lado de acordo com o ano correspondente.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+
+                {/* Artigo 18 - Regra Geral */}
+                <div className="bg-slate-50 p-5 rounded-2xl border border-slate-200 md:col-span-2">
+                  <h3 className="font-bold text-slate-800 flex items-center gap-2 text-sm sm:text-base border-b border-slate-200 pb-3 mb-4">
+                    <span className="bg-sky-600 text-white w-6 h-6 rounded-full text-xs flex items-center justify-center font-bold">18</span>
+                    Artigo 18 - Regra Geral de Aposentadoria por Idade Limpa
+                  </h3>
+                  <p className="text-xs text-slate-500 mb-4 leading-relaxed">
+                    A regra exige a idade mínima de <strong>65 anos para Homens</strong> e <strong>62 anos para Mulheres</strong>, combinada com carência mínima de 15 anos de tempo de contribuição efetivo.
+                  </p>
+
+                  {(() => {
+                    const r18 = calcularArtigo18();
+                    return (
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4 text-center font-mono">
+                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <span className="block text-xs font-bold text-slate-500 uppercase font-sans">Idade Exigida</span>
+                          <span className="text-lg font-black text-slate-700 mt-1 block">{r18.idadeExigida} Anos</span>
+                        </div>
+                        <div className="bg-white p-3 rounded-xl border border-slate-200">
+                          <span className="block text-xs font-bold text-slate-500 uppercase font-sans">Carência Mínima</span>
+                          <span className="text-lg font-black text-slate-700 mt-1 block">15 Anos</span>
+                        </div>
+                        <div className={`p-3 rounded-xl border ${r18.atingida ? 'bg-emerald-50 border-emerald-200 text-emerald-800' : 'bg-blue-50 border-blue-200 text-blue-800'}`}>
+                          <span className="block text-xs font-bold uppercase font-sans">Data de Entrada Recomendada</span>
+                          <span className="text-lg font-black mt-1 block">{r18.data}</span>
+                        </div>
+                      </div>
+                    );
+                  })()}
+                </div>
+
+              </div>
+            </div>
+
+            <div className="text-center text-slate-400 text-[11px] mt-8 space-y-1 print:text-black print:border-t print:pt-4">
+              <p className="font-bold">Calculadora de Parâmetros Previdenciários — Cômputo Comercial de Trabalho</p>
+              <p>O presente sistema serve como ferramenta simplificada para análise inicial e triagem de carteiras. Não substitui a homologação judicial ou o parecer técnico oficial do INSS.</p>
+            </div>
+
+          </div>
+        </div>
+      );
+    }
+
+    const root = ReactDOM.createRoot(document.getElementById('root'));
+    root.render(<App />);
+  </script>
+</body>
+</html>
