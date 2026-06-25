@@ -284,7 +284,7 @@
           <div>
             <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 class="font-extrabold text-slate-900 flex items-center gap-2">
-                <i data-lucide="award" class="w-5 h-5 text-amber-600"></i> Pontos Progressivos <span class="text-xs font-normal text-slate-500">(Artigo 15)</span>
+                <i data-lucide="award" class="w-5 h-5 text-amber-600"></i> Pontos <span class="text-xs font-normal text-slate-500">(Artigo 15)</span>
               </h3>
               <span id="badge-art15" class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full">--</span>
             </div>
@@ -294,12 +294,12 @@
           <div id="footer-art15" class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-xs"></div>
         </div>
 
-        <!-- Regra de Transição 4: Idade Progressiva (Artigo 16) -->
+        <!-- Regra de Transição 4: Idade Mínima Progressiva (Artigo 16) -->
         <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between">
           <div>
             <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
               <h3 class="font-extrabold text-slate-900 flex items-center gap-2">
-                <i data-lucide="award" class="w-5 h-5 text-rose-600"></i> Idade Progressiva <span class="text-xs font-normal text-slate-500">(Artigo 16)</span>
+                <i data-lucide="award" class="w-5 h-5 text-rose-600"></i> Idade Mínima Progressiva <span class="text-xs font-normal text-slate-500">(Artigo 16)</span>
               </h3>
               <span id="badge-art16" class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full">--</span>
             </div>
@@ -672,10 +672,10 @@
         // Regra Artigo 20 - Pedágio de 100%
         renderArtigo20(totais, idadeObj);
 
-        // Regra Artigo 15 - Pontos Progressivos
+        // Regra Artigo 15 - Pontos
         renderArtigo15(totais, idadeObj);
 
-        // Regra Artigo 16 - Idade Progressiva
+        // Regra Artigo 16 - Idade Mínima Progressiva
         renderArtigo16(totais, idadeObj);
 
       } else {
@@ -875,7 +875,7 @@
         badge.textContent = "Pendente";
         divDetalhes.innerHTML = `
           <div class="p-3 bg-slate-50 text-slate-500 text-xs rounded-xl italic">
-            Insira a data de nascimento para calcular as exigências de Idade Progressiva.
+            Insira a data de nascimento para calcular as exigências de Idade Mínima Progressiva.
           </div>
         `;
         footer.innerHTML = '';
