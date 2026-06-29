@@ -143,13 +143,24 @@
               placeholder="EX: COMPANHIA METALURGICA LTDA"
             />
           </div>
-          <div class="md:col-span-2">
-            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cargo ou Atividade Executada</label>
+          <div class="md:col-span-1">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Cargo ou Atividade</label>
             <input 
               type="text" 
               id="novo-profissao"
               class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none uppercase text-sm font-semibold transition-all"
-              placeholder="EX: OPERADOR DE CALDEIRA"
+              placeholder="EX: OPERADOR"
+            />
+          </div>
+          <div class="md:col-span-1">
+            <label class="block text-xs font-bold text-slate-500 uppercase tracking-wider mb-1.5">Fator Conversão</label>
+            <input 
+              type="number"
+              step="0.01" 
+              id="novo-fator"
+              value="1.00"
+              class="w-full px-4 py-2 border border-slate-200 rounded-xl focus:ring-2 focus:ring-emerald-600 focus:outline-none text-sm font-semibold transition-all"
+              placeholder="Ex: 1.4"
             />
           </div>
         </div>
@@ -211,6 +222,7 @@
               <th class="px-4 py-3 w-10 text-center font-bold">Seq</th>
               <th class="px-4 py-3 font-bold">Empregador / Empresa</th>
               <th class="px-4 py-3 font-bold">Cargo</th>
+              <th class="px-4 py-3 font-bold">Fator</th>
               <th class="px-4 py-3 font-bold">Admissão</th>
               <th class="px-4 py-3 font-bold">Rescisão</th>
               <th class="px-4 py-3 text-center font-bold border-l border-slate-200 bg-blue-50/20">Anos</th>
@@ -309,6 +321,21 @@
           <div id="footer-art16" class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-xs"></div>
         </div>
 
+        <!-- Regra de Transição 5: Idade Mínima (Artigo 18) - NOVA -->
+        <div class="bg-white p-6 rounded-2xl shadow-sm border border-slate-200 flex flex-col justify-between md:col-span-2 lg:col-span-1">
+          <div>
+            <div class="flex items-center justify-between border-b border-slate-100 pb-3 mb-4">
+              <h3 class="font-extrabold text-slate-900 flex items-center gap-2">
+                <i data-lucide="award" class="w-5 h-5 text-purple-600"></i> Idade Mínima <span class="text-xs font-normal text-slate-500">(Artigo 18)</span>
+              </h3>
+              <span id="badge-art18" class="text-[10px] font-bold uppercase px-2.5 py-1 rounded-full">--</span>
+            </div>
+            <p class="text-xs text-slate-500 mb-4">Exige a idade de 65 anos para o homem e 62 anos para a mulher, associada ao tempo mínimo de contribuição de 15 anos para ambos.</p>
+            <div id="detalhes-art18" class="space-y-2 text-sm font-semibold text-slate-700"></div>
+          </div>
+          <div id="footer-art18" class="mt-6 pt-4 border-t border-slate-100 flex justify-between items-center text-xs"></div>
+        </div>
+
       </div>
     </div>
 
@@ -338,7 +365,7 @@
   </div>
 
   <script>
-    // Configurações do Estado Inicial
+    // Configurações do Estado Inicial (Adicionado Fator)
     let state = {
       nome: '',
       dataNascimento: '',
@@ -348,6 +375,7 @@
       editForm: {
         empresa: '',
         profissao: '',
+        fator: 1.0,
         inicio: '',
         fim: ''
       }
@@ -444,7 +472,7 @@
       return dataAlvo.toLocaleDateString('pt-BR');
     }
 
-    // Lógica do Cálculo de Período Comercial (INSS)
+    // Lógica do Cálculo de Período Comercial Base (INSS)
     function calcularPeriodoBase(inicio, fim) {
       let [a1, m1, d1] = inicio.split('-').map(Number);
       let [a2, m2, d2] = fim.split('-').map(Number);
@@ -482,7 +510,26 @@
       return { anos, meses, dias };
     }
 
-    // Normalização Geral e Cálculo por Segmento (EC 103/2019)
+    // Aplicação do Fator de Conversão Especial
+    function aplicarFator(tempo, fatorNum) {
+      if (!fatorNum || fatorNum === 1) return tempo;
+
+      // Transforma o período total em dias
+      let totalDias = (tempo.anos * 360) + (tempo.meses * 30) + tempo.dias;
+      
+      // Multiplica pelo fator
+      totalDias = Math.floor(totalDias * fatorNum);
+
+      // Converte novamente em anos, meses e dias
+      let anos = Math.floor(totalDias / 360);
+      let restoDias = totalDias % 360;
+      let meses = Math.floor(restoDias / 30);
+      let dias = restoDias % 30;
+
+      return { anos, meses, dias };
+    }
+
+    // Normalização Geral e Cálculo por Segmento (EC 103/2019) incorporando fator
     function calcularTotaisSeparados() {
       let preDias = 0, preMeses = 0, preAnos = 0;
       let posDias = 0, posMeses = 0, posAnos = 0;
@@ -492,7 +539,9 @@
       const INICIO_POS_EC = '2019-11-14';
 
       state.vinculos.forEach(v => {
-        const t = calcularPeriodoBase(v.inicio, v.fim);
+        const fator = v.fator || 1.0;
+        const t = aplicarFator(calcularPeriodoBase(v.inicio, v.fim), fator);
+        
         totalDias += t.dias;
         totalMeses += t.meses;
         totalAnos += t.anos;
@@ -506,12 +555,13 @@
           posMeses += t.meses;
           posAnos += t.anos;
         } else {
-          const prePeriodo = calcularPeriodoBase(v.inicio, LIMITE_EC);
+          // Divisão do período pela EC103 com aplicação do fator em ambas as partes
+          const prePeriodo = aplicarFator(calcularPeriodoBase(v.inicio, LIMITE_EC), fator);
           preDias += prePeriodo.dias;
           preMeses += prePeriodo.meses;
           preAnos += prePeriodo.anos;
 
-          const posPeriodo = calcularPeriodoBase(INICIO_POS_EC, v.fim);
+          const posPeriodo = aplicarFator(calcularPeriodoBase(INICIO_POS_EC, v.fim), fator);
           posDias += posPeriodo.dias;
           posMeses += posPeriodo.meses;
           posAnos += posPeriodo.anos;
@@ -606,6 +656,9 @@
               <td class="px-4 py-3.5 text-slate-600 font-semibold">
                 <input type="text" id="edit-profissao" value="${state.editForm.profissao}" class="w-full px-2 py-1 text-sm border border-amber-300 rounded focus:outline-none uppercase bg-white" />
               </td>
+              <td class="px-4 py-3.5 text-slate-600 font-semibold">
+                <input type="number" step="0.01" id="edit-fator" value="${state.editForm.fator}" class="w-16 px-1 py-1 text-sm border border-amber-300 rounded focus:outline-none bg-white font-mono" />
+              </td>
               <td class="px-4 py-3.5 whitespace-nowrap font-mono">
                 <input type="date" id="edit-inicio" value="${state.editForm.inicio}" class="px-1 py-1 text-sm border border-amber-300 rounded focus:outline-none bg-white font-mono" />
               </td>
@@ -631,6 +684,7 @@
               <td class="px-4 py-3.5 text-center font-mono font-bold text-slate-400">${idx + 1}</td>
               <td class="px-4 py-3.5 font-bold text-slate-900">${v.empresa}</td>
               <td class="px-4 py-3.5 text-slate-600 font-semibold">${v.profissao || '<span class="text-slate-300 font-normal italic">-</span>'}</td>
+              <td class="px-4 py-3.5 text-slate-600 font-mono">${v.fator ? v.fator.toFixed(2) : '1.00'}</td>
               <td class="px-4 py-3.5 whitespace-nowrap font-mono">${formatarData(v.inicio)}</td>
               <td class="px-4 py-3.5 whitespace-nowrap font-mono">${formatarData(v.fim)}</td>
               <td class="px-4 py-3.5 text-center font-mono font-bold text-blue-900 border-l border-slate-150 bg-blue-50/10">${v.tempo.anos}a</td>
@@ -666,17 +720,12 @@
         document.getElementById('resumo-pos-ec').textContent = `${totais.pos.anos}a ${totais.pos.meses}m ${totais.pos.dias}d`;
         document.getElementById('resumo-total').textContent = `${totais.total.anos}a ${totais.total.meses}m ${totais.total.dias}d`;
 
-        // Regra Artigo 17 - Pedágio de 50%
+        // Regras de Transição
         renderArtigo17(totais);
-
-        // Regra Artigo 20 - Pedágio de 100%
         renderArtigo20(totais, idadeObj);
-
-        // Regra Artigo 15 - Pontos
         renderArtigo15(totais, idadeObj);
-
-        // Regra Artigo 16 - Idade Mínima Progressiva
         renderArtigo16(totais, idadeObj);
+        renderArtigo18(totais, idadeObj); // Chamada para a nova regra Artigo 18
 
       } else {
         painelAnalise.classList.add('hidden');
@@ -852,8 +901,8 @@
         </div>
       `;
 
-      // Como o cálculo de pontos sobe 1 ponto por ano, projetamos de forma simplificada por dias comerciais residuais
-      const faltaPontosEquivalenteDias = (pontosFaltam / 2) * 360; // Fator de convergência dinâmico (Idade e Tempo sobem juntos)
+      // Projeção Simplificada de Pontos (Sobe tempo + idade)
+      const faltaPontosEquivalenteDias = (pontosFaltam / 2) * 360; 
       const derEstimada = projetarDataDER(faltaPontosEquivalenteDias);
 
       footer.innerHTML = `
@@ -882,7 +931,6 @@
         return;
       }
 
-      // Procura idade de transição para o ano atual
       const anoAtual = new Date().getFullYear();
       const parametroAno = progressivaIdadeArtigo16.find(p => p.ano === anoAtual) || progressivaIdadeArtigo16[progressivaIdadeArtigo16.length - 1];
       const idadeExigidaDecimal = state.genero === 'M' ? parametroAno.M : parametroAno.F;
@@ -935,12 +983,80 @@
       `;
     }
 
+    // Regra Artigo 18 (Nova)
+    function renderArtigo18(totais, idadeObj) {
+      const divDetalhes = document.getElementById('detalhes-art18');
+      const badge = document.getElementById('badge-art18');
+      const footer = document.getElementById('footer-art18');
+
+      if (!state.dataNascimento) {
+        badge.className = "text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-slate-100 text-slate-500";
+        badge.textContent = "Pendente";
+        divDetalhes.innerHTML = `
+          <div class="p-3 bg-slate-50 text-slate-500 text-xs rounded-xl italic">
+            Insira a data de nascimento para calcular a exigência de Idade Mínima (Artigo 18).
+          </div>
+        `;
+        footer.innerHTML = '';
+        return;
+      }
+
+      // Regras: 65 anos para Homem, 62 anos para Mulher. Tempo de contribuição 15 anos ambos.
+      const idadeExigida = state.genero === 'M' ? 65 : 62;
+      const tempoMinimoExigido = 15; 
+      
+      const tempoDecimal = totais.total.anos + (totais.total.meses / 12) + (totais.total.dias / 360);
+      
+      const atingiuIdade = idadeObj.decimal >= idadeExigida;
+      const atingiuTempo = tempoDecimal >= tempoMinimoExigido;
+      const elegivel = atingiuIdade && atingiuTempo;
+
+      // Projeção da Idade
+      const [anoN, mesN, diaN] = state.dataNascimento.split('-').map(Number);
+      const derIdadeDate = new Date(anoN + idadeExigida, mesN - 1, diaN);
+      const faltaIdadeAnos = Math.max(0, idadeExigida - idadeObj.decimal);
+
+      // Projeção do Tempo
+      const faltaTempoDecimal = Math.max(0, tempoMinimoExigido - tempoDecimal);
+      const derTempoDate = new Date();
+      derTempoDate.setDate(derTempoDate.getDate() + Math.ceil(faltaTempoDecimal * 360));
+
+      badge.className = elegivel 
+        ? "text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200"
+        : "text-[10px] font-bold uppercase px-2.5 py-1 rounded-full bg-amber-50 text-amber-700 border border-amber-200";
+      badge.textContent = elegivel ? "Elegível" : "Incompleto";
+
+      divDetalhes.innerHTML = `
+        <div class="flex justify-between"><span>Sua idade atual:</span><span class="font-mono">${idadeObj.anos}a ${idadeObj.meses}m</span></div>
+        <div class="flex justify-between"><span>Idade Mínima Exigida:</span><span class="font-mono text-purple-600 font-bold">${idadeExigida} anos</span></div>
+        <div class="flex justify-between text-xs mt-1"><span>Projeção Falta Idade:</span><span class="font-mono font-bold ${atingiuIdade ? 'text-emerald-600' : 'text-amber-600'}">${atingiuIdade ? 'Cumprido' : faltaIdadeAnos.toFixed(2) + ' anos'}</span></div>
+        
+        <div class="flex justify-between border-t border-slate-100 pt-2 mt-2 font-black"><span>Tempo Exigido (Ambos):</span><span class="font-mono">${tempoMinimoExigido} anos</span></div>
+        <div class="flex justify-between"><span>Tempo Atual:</span><span class="font-mono">${totais.total.anos}a ${totais.total.meses}m</span></div>
+        <div class="flex justify-between text-xs mt-1"><span>Projeção Falta Contribuir:</span><span class="font-mono font-bold ${atingiuTempo ? 'text-emerald-600' : 'text-amber-600'}">${atingiuTempo ? 'Cumprido' : decimalParaAnosMesesDias(faltaTempoDecimal)}</span></div>
+      `;
+
+      let finalDerDate = new Date();
+      if (derIdadeDate > finalDerDate) finalDerDate = derIdadeDate;
+      if (faltaTempoDecimal > 0 && derTempoDate > finalDerDate) finalDerDate = derTempoDate;
+
+      const derTexto = elegivel ? "Requisitos já cumpridos!" : finalDerDate.toLocaleDateString('pt-BR');
+
+      footer.innerHTML = `
+        <span class="font-semibold text-slate-500">Estimativa de DER:</span>
+        <span class="font-bold text-slate-900 text-sm flex items-center gap-1">
+          <i data-lucide="arrow-right" class="w-3.5 h-3.5 text-purple-600"></i> ${derTexto}
+        </span>
+      `;
+    }
+
     // Ações de Vínculo: Adição, Remoção e Edição
     document.getElementById('form-vinculo').onsubmit = function(e) {
       e.preventDefault();
       
       const empresa = document.getElementById('novo-empresa').value.trim().toUpperCase();
       const profissao = document.getElementById('novo-profissao').value.trim().toUpperCase();
+      const fator = parseFloat(document.getElementById('novo-fator').value) || 1.0;
       const inicio = document.getElementById('novo-inicio').value;
       const fim = document.getElementById('novo-fim').value;
 
@@ -953,11 +1069,15 @@
         return;
       }
 
-      const tempo = calcularPeriodoBase(inicio, fim);
+      // Aplica o fator de conversão no tempo gerado
+      const tempoBruto = calcularPeriodoBase(inicio, fim);
+      const tempo = aplicarFator(tempoBruto, fator);
+
       state.vinculos.push({
         id: Date.now(),
         empresa,
         profissao,
+        fator,
         inicio,
         fim,
         tempo
@@ -966,6 +1086,7 @@
       // Limpa inputs
       document.getElementById('novo-empresa').value = '';
       document.getElementById('novo-profissao').value = '';
+      document.getElementById('novo-fator').value = '1.00';
       document.getElementById('novo-inicio').value = '';
       document.getElementById('novo-fim').value = '';
 
@@ -986,6 +1107,7 @@
         state.editForm = {
           empresa: v.empresa,
           profissao: v.profissao,
+          fator: v.fator || 1.0,
           inicio: v.inicio,
           fim: v.fim
         };
@@ -1001,6 +1123,7 @@
     function salvarEdicao(id) {
       const empresa = document.getElementById('edit-empresa').value.trim().toUpperCase();
       const profissao = document.getElementById('edit-profissao').value.trim().toUpperCase();
+      const fator = parseFloat(document.getElementById('edit-fator').value) || 1.0;
       const inicio = document.getElementById('edit-inicio').value;
       const fim = document.getElementById('edit-fim').value;
 
@@ -1013,10 +1136,12 @@
         return;
       }
 
-      const tempo = calcularPeriodoBase(inicio, fim);
+      const tempoBruto = calcularPeriodoBase(inicio, fim);
+      const tempo = aplicarFator(tempoBruto, fator);
+
       state.vinculos = state.vinculos.map(v => {
         if (v.id === id) {
-          return { ...v, empresa, profissao, inicio, fim, tempo };
+          return { ...v, empresa, profissao, fator, inicio, fim, tempo };
         }
         return v;
       });
@@ -1066,7 +1191,7 @@
           genero: 'M',
           vinculos: [],
           editingId: null,
-          editForm: { empresa: '', profissao: '', inicio: '', fim: '' }
+          editForm: { empresa: '', profissao: '', fator: 1.0, inicio: '', fim: '' }
         };
         document.getElementById('input-nome').value = '';
         document.getElementById('input-data-nascimento').value = '';
